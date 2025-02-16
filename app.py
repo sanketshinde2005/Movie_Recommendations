@@ -5,8 +5,14 @@ import pandas as pd
 import pickle
 from huggingface_hub import hf_hub_download
 
-# Function to fetch movie poster from TMDb API
+# Streamlit UI
+st.set_page_config(page_title="Movie Recommender", layout="wide")  # Better layout
+
+
+# Fetch movie poster from TMDb API
+@st.cache_data
 def fetch_poster(movie_id):
+    """Fetch movie poster URL from TMDb API with retry logic."""
     url = f'https://api.themoviedb.org/3/movie/{movie_id}?api_key=d38f385f9e591a6bf106f8fb7f63548f&language=en-US'
     retries = 3  # Number of retries
     for attempt in range(retries):
@@ -16,49 +22,51 @@ def fetch_poster(movie_id):
             data = response.json()
             if 'poster_path' in data and data['poster_path']:
                 return "https://image.tmdb.org/t/p/w500/" + data['poster_path']
-            else:
-                return "https://via.placeholder.com/500x750?text=No+Image+Available"
         except requests.exceptions.ConnectionError:
-            print(f"Connection error. Retrying {attempt + 1}/{retries}...")
             time.sleep(2)  # Wait before retrying
-        except requests.exceptions.HTTPError as e:
-            print(f"HTTP error: {e}")
-            break  # Don't retry for HTTP errors like 404
-        except requests.exceptions.RequestException as e:
-            print(f"Request error: {e}")
-            break  # Stop retrying if it's another error
-    return "https://via.placeholder.com/500x750?text=No+Image+Available"  # Default fallback
+        except requests.exceptions.RequestException:
+            break  # Stop retrying on fatal errors
+    return "https://via.placeholder.com/500x750?text=No+Image+Available"  # Fallback image
 
-# Function to recommend similar movies
+
+# Recommend similar movies
 def recommend(movie):
+    """Recommend movies based on similarity scores."""
+    if movie not in movies['title'].values:
+        return [], []  # Handle missing movies
+
     movie_index = movies[movies['title'] == movie].index[0]
     distances = similarity[movie_index]
-    movies_list = sorted(list(enumerate(distances)), reverse=True, key=lambda x: x[1])[1:6]
 
-    recommended_movies = []
-    recommended_movies_posters = []
+    # Efficiently get top 5 recommendations
+    movies_list = sorted(enumerate(distances), key=lambda x: x[1], reverse=True)[1:6]
 
-    for i in movies_list:
-        movie_id = movies.iloc[i[0]].movie_id  # Fetching movie ID
-        recommended_movies.append(movies.iloc[i[0]].title)
-        recommended_movies_posters.append(fetch_poster(movie_id))  # Fetch poster
+    recommended_movies = [movies.iloc[i[0]].title for i in movies_list]
+    recommended_movies_posters = [fetch_poster(movies.iloc[i[0]].movie_id) for i in movies_list]
 
     return recommended_movies, recommended_movies_posters
 
-# Download movie data and similarity matrix from Hugging Face
-repo_id = "https://huggingface.co/Sankeyyyyy/Movie-recommendation-system/tree/main"
 
-movies_path = hf_hub_download(repo_id=repo_id, filename="movie_dict.pkl")
-similarity_path = hf_hub_download(repo_id=repo_id, filename="similarity.pkl")
+# Download data from Hugging Face
+repo_id = "Sankeyyyyy/Movie-recommendation-system"
 
-# Load movie data and similarity matrix
-with open(movies_path, 'rb') as f:
-    movies_dict = pickle.load(f)
 
-with open(similarity_path, 'rb') as f:
-    similarity = pickle.load(f)
+@st.cache_data
+def load_data():
+    """Load movie data and similarity matrix from Hugging Face."""
+    movies_path = hf_hub_download(repo_id=repo_id, filename="movie_dict.pkl")
+    similarity_path = hf_hub_download(repo_id=repo_id, filename="similarity.pkl")
 
-movies = pd.DataFrame(movies_dict)
+    with open(movies_path, 'rb') as f:
+        movies_dict = pickle.load(f)
+
+    with open(similarity_path, 'rb') as f:
+        similarity_matrix = pickle.load(f)
+
+    return pd.DataFrame(movies_dict), similarity_matrix
+
+
+movies, similarity = load_data()
 
 # Streamlit UI
 st.title("🎬 Movie Recommendation System")
@@ -70,8 +78,12 @@ selected_movie_name = st.selectbox(
 
 if st.button('Recommend'):
     names, posters = recommend(selected_movie_name)
-    columns = st.columns(5)
-    for i in range(5):
-        with columns[i]:
-            st.text(names[i])
-            st.image(posters[i])
+
+    if names:
+        columns = st.columns(5)
+        for i in range(5):
+            with columns[i]:
+                st.text(names[i])
+                st.image(posters[i])
+    else:
+        st.error("No recommendations found. Try another movie!")

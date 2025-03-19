@@ -5,11 +5,9 @@ import pandas as pd
 import pickle
 from huggingface_hub import hf_hub_download
 
-# Streamlit UI
 st.set_page_config(page_title="Movie Recommender", layout="wide")  # Better layout
 
 
-# Fetch movie poster from TMDb API
 @st.cache_data
 def fetch_poster(movie_id):
     """Fetch movie poster URL from TMDb API with retry logic."""
@@ -29,7 +27,6 @@ def fetch_poster(movie_id):
     return "https://via.placeholder.com/500x750?text=No+Image+Available"  # Fallback image
 
 
-# Recommend similar movies
 def recommend(movie):
     """Recommend movies based on similarity scores."""
     if movie not in movies['title'].values:
@@ -47,7 +44,6 @@ def recommend(movie):
     return recommended_movies, recommended_movies_posters
 
 
-# Download data from Hugging Face
 repo_id = "Sankeyyyyy/Movie-recommendation-system"
 
 
@@ -68,7 +64,6 @@ def load_data():
 
 movies, similarity = load_data()
 
-# Streamlit UI
 st.title("🎬 Movie Recommendation System")
 
 selected_movie_name = st.selectbox(
